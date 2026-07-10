@@ -1,0 +1,26 @@
+# Compiled binaries
+/bin/
+*.exe
+watermark
+
+# Go build/test artifacts
+*.test
+*.out
+coverage.*
+
+# Environment / secrets — NEVER commit these
+.env
+*.local
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Local data volumes from docker-compose
+/pgdata/
+/data/
+
+# Measured results are committed (RESULTS.md), but raw benchmark dumps are not
+/bench-raw/
+CLAUDE.md
