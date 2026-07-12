@@ -1,0 +1,48 @@
+services:
+  source-db:
+    image: postgres:16-alpine
+    container_name: watermark-source-db
+    environment:
+      POSTGRES_USER: watermark
+      POSTGRES_PASSWORD: watermark
+      POSTGRES_DB: watermark_source
+    # wal_level=logical + replication slots/senders are required for logical
+    # replication (this is the source the consumer streams changes from).
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=logical"
+      - "-c"
+      - "max_replication_slots=10"
+      - "-c"
+      - "max_wal_senders=10"
+    ports:
+      - "5433:5432"
+    volumes:
+      - source_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watermark -d watermark_source"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  downstream-db:
+    image: postgres:16-alpine
+    container_name: watermark-downstream-db
+    environment:
+      POSTGRES_USER: watermark
+      POSTGRES_PASSWORD: watermark
+      POSTGRES_DB: watermark_downstream
+    ports:
+      - "5434:5432"
+    volumes:
+      - downstream_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U watermark -d watermark_downstream"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  source_data:
+  downstream_data:
