@@ -26,8 +26,9 @@ type Consumer struct {
 	cfg  *shared.Config
 	conn *pgconn.PgConn
 
-	relations   map[uint32]*pglogrepl.RelationMessage
-	currentTxID uint32
+	relations         map[uint32]*pglogrepl.RelationMessage
+	currentTxID       uint32
+	currentCommitTime time.Time
 }
 
 // NewConsumer ensures the publication and replication slot exist (creating
@@ -149,6 +150,7 @@ func (c *Consumer) decode(lsn pglogrepl.LSN, walData []byte, events chan<- share
 
 	case *pglogrepl.BeginMessage:
 		c.currentTxID = m.Xid
+		c.currentCommitTime = m.CommitTime
 
 	case *pglogrepl.InsertMessage:
 		return c.emitRow(events, lsn, m.RelationID, shared.OpInsert, m.Tuple)
@@ -173,11 +175,12 @@ func (c *Consumer) emitRow(events chan<- shared.ChangeEvent, lsn pglogrepl.LSN, 
 	}
 
 	event := shared.ChangeEvent{
-		LSN:       uint64(lsn),
-		TxID:      c.currentTxID,
-		Table:     rel.RelationName,
-		Operation: op,
-		Columns:   make(map[string][]byte, len(tuple.Columns)),
+		LSN:        uint64(lsn),
+		TxID:       c.currentTxID,
+		CommitTime: c.currentCommitTime,
+		Table:      rel.RelationName,
+		Operation:  op,
+		Columns:    make(map[string][]byte, len(tuple.Columns)),
 	}
 
 	for i, col := range tuple.Columns {
