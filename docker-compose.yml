@@ -20,6 +20,7 @@ services:
       - "5433:5432"
     volumes:
       - source_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U watermark -d watermark_source"]
       interval: 5s
@@ -37,6 +38,7 @@ services:
       - "5434:5432"
     volumes:
       - downstream_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U watermark -d watermark_downstream"]
       interval: 5s

@@ -8,10 +8,16 @@ import (
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/extrem21/watermark/pipeline"
 	"github.com/extrem21/watermark/shared"
 )
+
+// metricsInterval controls how often accumulated throughput is reported.
+// Per-change end-to-end lag is logged on every apply, not just at this
+// interval — lag is a per-event measurement, throughput is a windowed one.
+const metricsInterval = 5 * time.Second
 
 func main() {
 	var cfg shared.Config
@@ -35,12 +41,26 @@ func main() {
 
 	events := make(chan shared.ChangeEvent, 100)
 	go func() {
+		applied := 0
+		windowStart := time.Now()
+
 		for ev := range events {
 			if err := applier.Apply(ctx, ev); err != nil {
 				log.Printf("apply failed table=%s key=%s lsn=%d: %v", ev.Table, ev.Key, ev.LSN, err)
 				continue
 			}
-			log.Printf("applied op=%d table=%s key=%s lsn=%d", ev.Operation, ev.Table, ev.Key, ev.LSN)
+
+			lag := time.Since(ev.CommitTime)
+			log.Printf("applied op=%d table=%s key=%s lsn=%d lag=%s", ev.Operation, ev.Table, ev.Key, ev.LSN, lag)
+			applied++
+
+			if elapsed := time.Since(windowStart); elapsed >= metricsInterval {
+				throughput := float64(applied) / elapsed.Seconds()
+				log.Printf("METRICS throughput=%.2f changes/sec window=%s applied=%d last_lag=%s",
+					throughput, elapsed.Round(time.Millisecond), applied, lag)
+				applied = 0
+				windowStart = time.Now()
+			}
 		}
 	}()
 

@@ -2,15 +2,20 @@ package shared
 
 import "flag"
 
-// Config is the CLI surface for every binary in this project. Stage 1 only
-// needs the connection + slot fields below; later stages add fields here
-// (seed, fault rates, worker count, retention bound) as those stages need
-// them rather than stubbing them out now.
+// Config is the CLI surface for every binary in this project. Stage 1 needs
+// the connection + slot fields, plus Seed and WorkloadOps for the workload
+// generator (harness/workload_gen.go) — reproducibility depends on the seed
+// being explicit from the start, not stubbed out until a later stage.
+// Later stages add fields here (fault rates, worker count, retention bound)
+// as those stages need them.
 type Config struct {
 	SourceDSN       string
 	DownstreamDSN   string
 	SlotName        string
 	PublicationName string
+
+	Seed        int64
+	WorkloadOps int
 }
 
 // RegisterFlags binds Config fields to flags on fs, so multiple binaries
@@ -26,4 +31,8 @@ func (c *Config) RegisterFlags(fs *flag.FlagSet) {
 		"name of the logical replication slot on the source")
 	fs.StringVar(&c.PublicationName, "publication-name", "watermark_pub",
 		"name of the publication on the source")
+	fs.Int64Var(&c.Seed, "seed", 1,
+		"seed for all randomness (workload generator, later fault injection); never time.Now()")
+	fs.IntVar(&c.WorkloadOps, "workload-ops", 200,
+		"number of INSERT/UPDATE/DELETE operations the workload generator issues")
 }
