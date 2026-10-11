@@ -39,11 +39,11 @@ func main() {
 	}
 	defer consumer.Close(context.Background())
 
-	applier, err := pipeline.NewApplier(ctx, &cfg)
+	checkpointer, err := pipeline.NewCheckpointer(ctx, &cfg)
 	if err != nil {
-		log.Fatalf("new applier: %v", err)
+		log.Fatalf("new checkpointer: %v", err)
 	}
-	defer applier.Close()
+	defer checkpointer.Close()
 
 	events := make(chan shared.ChangeEvent, 100)
 
@@ -90,8 +90,16 @@ func main() {
 					flush()
 					return
 				}
-				if err := applier.Apply(ctx, ev); err != nil {
-					log.Printf("apply failed table=%s key=%s lsn=%d: %v", ev.Table, ev.Key, ev.LSN, err)
+				applied, err := checkpointer.ApplyAndCheckpoint(ctx, ev)
+				if err != nil {
+					log.Printf("apply-and-checkpoint failed table=%s key=%s lsn=%d: %v", ev.Table, ev.Key, ev.LSN, err)
+					continue
+				}
+				if !applied {
+					// Redelivered after its commit already landed (acknowledgment
+					// gap or post-crash replay) — correctly skipped by the
+					// monotonic watermark check, not a metrics-worthy apply.
+					log.Printf("skipped duplicate op=%d table=%s key=%s lsn=%d (already checkpointed)", ev.Operation, ev.Table, ev.Key, ev.LSN)
 					continue
 				}
 

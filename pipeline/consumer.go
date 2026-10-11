@@ -71,6 +71,14 @@ func (c *Consumer) Start(ctx context.Context, events chan<- shared.ChangeEvent) 
 	if err := pglogrepl.StartReplication(ctx, c.conn, c.cfg.SlotName, 0, pglogrepl.StartReplicationOptions{PluginArgs: pluginArgs}); err != nil {
 		return fmt.Errorf("start replication: %w", err)
 	}
+	// Logged unconditionally (unlike slot creation, which only logs on a
+	// fresh slot) so a caller — the crash harness, in particular — has a
+	// single reliable signal that streaming has actually begun, whether
+	// the slot was just created or an existing one was resumed. Firing a
+	// workload before this point risks writing changes a brand-new slot's
+	// snapshot LSN has already passed, which are then invisible to it
+	// forever — not resent, not missed-and-retried, just gone.
+	log.Printf("replication started on slot %q", c.cfg.SlotName)
 
 	return c.stream(ctx, events)
 }

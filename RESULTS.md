@@ -122,3 +122,69 @@ lag_p50=10ms lag_p90=25ms lag_p99=34ms`, 2026-07-17)
   exactly what you'd expect from blending one cold-start-affected run into a larger warm pool.
 - This is I/O-bound, GC'd Go; these are millisecond-scale, network/Postgres-round-trip-dominated
   numbers, not a sub-millisecond precision claim.
+
+## Stage 2 — crash-safety proof + recovery time (seeded process kills, atomic apply-and-checkpoint)
+
+**What this measures:** whether the atomic apply-and-checkpoint transaction (`pipeline/checkpoint.go`)
+actually survives a real `SIGKILL` of the running pipeline process, not just the in-process unit
+tests in `pipeline/checkpoint_test.go`. Each trial kills the real `cmd/pipeline` binary at one of
+the two crash windows named in `CLAUDE.md` — mid-transaction (as fast as possible after the Nth
+applied change, racing to catch the next change's still-open transaction) or the acknowledgment
+gap (after a settle delay, so the Nth change has certainly committed downstream but Postgres hasn't
+necessarily been told so) — restarts it against the same persistent replication slot, and asserts
+`harness.RunDiffOracle` converges to exact row-for-row equality. This is the headline claim of the
+whole project: not "it seems to work," but N reproducible seeded crash scenarios, passing or the
+exact failing one named.
+
+**How it's measured:** `cmd/crashharness` builds a real `cmd/pipeline` binary (not `go run`, which
+wraps the compiled binary in a build-and-exec parent that doesn't propagate `SIGKILL` to the child),
+derives N trials deterministically from one seed (`harness.GenerateTrials`), and runs them in
+sequence against one continuous session — the replication slot and the downstream's
+`replication_progress` watermark both persist across trials and restarts, exactly as they would
+across real crashes in production. Recovery time is measured from the moment the kill signal is
+sent to the moment the diff oracle reports equality again.
+
+**Command:**
+```
+# terminal 1
+docker compose up -d
+# terminal 2
+go run ./cmd/crashharness -trials 50 -seed 7
+```
+
+**Config:** seed=7, trials=50, workload-ops=30 (ops per trial, the `-workload-ops` default this
+binary uses)
+
+**Result: 50/50 trials passed — exact row-for-row equality after every single seeded crash+restart.**
+
+| crash point | n | recovery min | recovery p50 | recovery p90 | recovery max |
+|---|---|---|---|---|---|
+| ack-gap | 27 | 391ms | 418ms | 443ms | 523ms |
+| mid-transaction | 23 | 441ms | 719ms | 1.28s | 1.78s |
+| **all 50** | 50 | 391ms | 443ms | 1.15s | 1.78s |
+
+(from the run's own `TRIAL ...` / `RECOVERY ...` log lines, seed=7, 2026-07-27; wall-clock ~65s for
+all 50 trials)
+
+**Notes / honest caveats:**
+- **Recovery time is not constant — it grows over the session, and only for mid-transaction
+  kills.** Ack-gap recovery stays tight (391–523ms) across the whole run. Mid-transaction recovery
+  grows from ~440ms early in the run to ~1.8s by trial 49, tracking almost exactly with the
+  `duplicatesSkipped` count reported per trial (25 early on, over 1200 by the last trials). The
+  cause: `pipeline/consumer.go`'s standby status update only reports `WALWritePosition`, never
+  `WALFlushPosition`, so Postgres's `confirmed_flush_lsn` for the slot likely never advances. Every
+  restart therefore resumes from further back than strictly necessary and re-streams more
+  already-applied history than the last restart did — correctly rejected by the monotonic
+  `last_lsn < $1` gate every time (that's what `duplicatesSkipped` counts), but not for free: more
+  redelivered history to stream and check per restart, dominating mid-transaction recovery time as
+  the session goes on. This is a real, honest limitation of the current implementation, not a
+  correctness gap — the diff oracle passed 50/50 regardless — and the natural fix (properly
+  advancing the flush position) is Stage 4 slot-retention territory, not Stage 2.
+- Ack-gap trials don't show this growth because `ackGapSettleDelay` gives each one a similar, small,
+  roughly-constant amount of unconfirmed history to redeliver, regardless of session length.
+- `-workload-ops 30` (ops per trial) is a `cmd/crashharness`-specific default, not the same
+  `-workload-ops` semantics as `cmd/benchmark`'s single big batch — here it's replayed once per
+  trial, 50 times, against one continuously-running session.
+- Single sample set (N=50 trials, one sitting, one seed), same caveat as the Stage 1 numbers above:
+  this is what seed=7 looked like on this machine on this date, reproducible on demand with the
+  exact command above, not a claim of statistical significance beyond that.

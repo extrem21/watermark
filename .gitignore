@@ -24,3 +24,4 @@ coverage.*
 # Measured results are committed (RESULTS.md), but raw benchmark dumps are not
 /bench-raw/
 CLAUDE.md
+.claude/

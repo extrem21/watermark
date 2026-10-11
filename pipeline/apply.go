@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/extrem21/watermark/shared"
 )
@@ -20,36 +19,19 @@ var primaryKeyColumn = map[string]string{
 	"accounts": "id",
 }
 
-// Applier writes decoded changes to the downstream database.
-//
-// Stage 1 note: this is happy-path only — there is no watermark table or
-// apply-and-checkpoint transaction yet (that's Stage 2), so a crash
-// mid-apply is not yet survived. It IS written idempotently (upsert /
-// absolute update / delete) because a consumer reconnect can redeliver a
-// change even with zero fault injection, and writing it idempotently from
-// the start costs nothing extra.
-type Applier struct {
-	pool *pgxpool.Pool
-}
-
-func NewApplier(ctx context.Context, cfg *shared.Config) (*Applier, error) {
-	pool, err := pgxpool.New(ctx, cfg.DownstreamDSN)
-	if err != nil {
-		return nil, fmt.Errorf("connect to downstream: %w", err)
-	}
-	return &Applier{pool: pool}, nil
-}
-
-func (a *Applier) Close() {
-	a.pool.Close()
-}
-
-// Apply writes a single change to the downstream, idempotently.
+// applyChange writes a single change to the downstream, idempotently. It
+// takes a pgx.Tx specifically, not a pool or a bare connection — a *pgxpool.
+// Pool exposes an Exec method too, so accepting anything looser than pgx.Tx
+// here would let a future call site apply a change outside the transaction
+// that also advances the watermark in checkpoint.go. That's exactly the
+// two-separate-steps bug Stage 2's atomic apply-and-checkpoint exists to
+// close, so the compiler is made to forbid it rather than relying on
+// convention.
 //
 // Insert and Update share one code path: Postgres's logical decode sends
 // the full new row for an update, not just the changed columns, so both
 // are just "upsert this row" with absolute values — never a relative delta.
-func (a *Applier) Apply(ctx context.Context, ev shared.ChangeEvent) error {
+func applyChange(ctx context.Context, tx pgx.Tx, ev shared.ChangeEvent) error {
 	pk, ok := primaryKeyColumn[ev.Table]
 	if !ok {
 		return fmt.Errorf("no known primary key column for table %q", ev.Table)
@@ -57,15 +39,15 @@ func (a *Applier) Apply(ctx context.Context, ev shared.ChangeEvent) error {
 
 	switch ev.Operation {
 	case shared.OpInsert, shared.OpUpdate:
-		return a.upsert(ctx, ev.Table, pk, ev.Columns)
+		return upsert(ctx, tx, ev.Table, pk, ev.Columns)
 	case shared.OpDelete:
-		return a.delete(ctx, ev.Table, pk, ev.Key)
+		return deleteRow(ctx, tx, ev.Table, pk, ev.Key)
 	default:
 		return fmt.Errorf("unknown operation %d", ev.Operation)
 	}
 }
 
-func (a *Applier) upsert(ctx context.Context, table, pk string, columns map[string][]byte) error {
+func upsert(ctx context.Context, tx pgx.Tx, table, pk string, columns map[string][]byte) error {
 	if len(columns) == 0 {
 		return fmt.Errorf("upsert on table %q with no column values", table)
 	}
@@ -99,13 +81,13 @@ func (a *Applier) upsert(ctx context.Context, table, pk string, columns map[stri
 		strings.Join(updateSet, ", "),
 	)
 
-	_, err := a.pool.Exec(ctx, stmt, args...)
+	_, err := tx.Exec(ctx, stmt, args...)
 	return err
 }
 
-func (a *Applier) delete(ctx context.Context, table, pk, key string) error {
+func deleteRow(ctx context.Context, tx pgx.Tx, table, pk, key string) error {
 	stmt := fmt.Sprintf("DELETE FROM %s WHERE %s = $1",
 		pgx.Identifier{table}.Sanitize(), pgx.Identifier{pk}.Sanitize())
-	_, err := a.pool.Exec(ctx, stmt, key)
+	_, err := tx.Exec(ctx, stmt, key)
 	return err
 }
