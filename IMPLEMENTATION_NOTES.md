@@ -112,5 +112,5 @@ covers the why-this-architecture story; this file is the "here's what happened w
   investigation tests**: truncate `accounts` on both sides, delete `replication_progress`, and
   check for stray replication slots/publications (`SELECT slot_name, active FROM
   pg_replication_slots;`). Leftover state from an earlier manual `go run ./cmd/pipeline` left open
-  in another terminal was the source of several confusing failures this session — always check
+  in another terminal was the source of several confusing failures during development — always check
   `ps aux | grep pipeline` before assuming a bug.
