@@ -2,7 +2,7 @@
 
 Every number here was produced by a command in this repo, on the hardware and workload stated next
 to it. No estimated or borrowed numbers. If a number can't be regenerated on demand with the given
-command, seed, and run count, it doesn't belong in this file — see `CLAUDE.md`'s ideology section.
+command, seed, and run count, it doesn't belong in this file.
 
 ## Hardware
 
@@ -61,11 +61,11 @@ equal)
   meaningful.
 - This is end-to-end throughput (source commit → downstream confirmed applied), not raw apply-loop
   throughput isolated from workload-injection speed — those are not separable with the current
-  single-process harness design, and conflating them is called out as dishonest in `CLAUDE.md`.
+  single-process harness design, and presenting one as the other would be misleading.
 - Not a latency claim — see the separate lag section below. Throughput and lag are two different
-  measurements here, not the same number restated (`CLAUDE.md` bans presenting throughput and
-  per-op latency as independent wins specifically when the second is just 1/throughput; lag is
-  measured from a distinct timestamp per event, so it isn't that).
+  measurements here, not the same number restated (per-op latency is not reported as a separate win
+  when it would just be 1/throughput; lag is measured from a distinct timestamp per event, so it
+  isn't that).
 
 ## Stage 1 — end-to-end replication lag (single consumer, happy path, no faults)
 
@@ -80,7 +80,7 @@ burst's throughput line, computed via nearest-rank on the sorted in-burst sample
 self-reported by the pipeline, not independently re-derived the way the throughput number is —
 lag requires knowing `ev.CommitTime`, which only the pipeline observes.
 
-**Not a tail-latency claim in the sense `CLAUDE.md` bans.** This is I/O-bound, GC'd Go; lag here is
+**Not a tail-latency claim.** This is I/O-bound, GC'd Go; lag here is
 milliseconds, dominated by network/Postgres round-trips, not a claim of sub-millisecond precision.
 
 **Command:**
@@ -128,7 +128,7 @@ lag_p50=10ms lag_p90=25ms lag_p99=34ms`, 2026-07-17)
 **What this measures:** whether the atomic apply-and-checkpoint transaction (`pipeline/checkpoint.go`)
 actually survives a real `SIGKILL` of the running pipeline process, not just the in-process unit
 tests in `pipeline/checkpoint_test.go`. Each trial kills the real `cmd/pipeline` binary at one of
-the two crash windows named in `CLAUDE.md` — mid-transaction (as fast as possible after the Nth
+the two crash windows the design targets — mid-transaction (as fast as possible after the Nth
 applied change, racing to catch the next change's still-open transaction) or the acknowledgment
 gap (after a settle delay, so the Nth change has certainly committed downstream but Postgres hasn't
 necessarily been told so) — restarts it against the same persistent replication slot, and asserts

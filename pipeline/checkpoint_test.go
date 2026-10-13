@@ -119,7 +119,7 @@ func TestApplyAndCheckpoint_DuplicateIsSkipped(t *testing.T) {
 }
 
 // TestApplyAndCheckpoint_StaleOverwriteRejected is the exact scenario
-// CLAUDE.md names: source updates a row to 90, then to 80; a replay of the
+// from the design: source updates a row to 90, then to 80; a replay of the
 // older change must not clobber the newer value.
 func TestApplyAndCheckpoint_StaleOverwriteRejected(t *testing.T) {
 	ctx := context.Background()

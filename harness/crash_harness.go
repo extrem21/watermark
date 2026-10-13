@@ -29,7 +29,7 @@ const (
 	// ackGapSettleDelay is added before killing for CrashAckGap trials, so
 	// the Nth change's transaction has certainly committed downstream
 	// before the process dies — landing the crash in the acknowledgment
-	// gap CLAUDE.md names, not mid-transaction. CrashMidTransaction trials
+	// gap, not mid-transaction. CrashMidTransaction trials
 	// add no delay: killing as fast as possible after the signal is the
 	// entire mechanism for racing into the next change's still-open
 	// transaction.
@@ -50,7 +50,7 @@ const (
 	workloadTailBuffer = 10
 )
 
-// CrashPoint names which of CLAUDE.md's two crash windows a trial targets.
+// CrashPoint names which of the two crash windows a trial targets.
 type CrashPoint int
 
 const (
@@ -84,8 +84,7 @@ type CrashTrial struct {
 
 // GenerateTrials deterministically derives n crash trials from seed: same
 // seed, same n, same opsPerTrial -> the identical sequence of trials every
-// time, per CLAUDE.md's "a failing seed can be replayed deterministically"
-// requirement. Never seeded from time.Now().
+// time, so a failing seed can be replayed deterministically. Never seeded from time.Now().
 func GenerateTrials(seed int64, n int, opsPerTrial int) []CrashTrial {
 	rng := rand.New(rand.NewSource(seed))
 	trials := make([]CrashTrial, n)
@@ -385,7 +384,7 @@ func resetProgressRows(ctx context.Context, cfg *shared.Config) error {
 
 // dropCrashSlot best-effort drops the crash harness's dedicated
 // slot/publication so it never retains WAL on the source indefinitely —
-// the exact hazard CLAUDE.md's Stage 4 section is about.
+// an unbounded-WAL-retention hazard on the source.
 func dropCrashSlot(cfg *shared.Config) {
 	ctx := context.Background()
 	_ = terminateSlotBackend(ctx, cfg)

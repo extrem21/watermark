@@ -20,8 +20,7 @@ const singlePartitionID = 0
 // Checkpointer is the production apply path from Stage 2 on: every change is
 // applied and its watermark advanced in one downstream transaction, so a
 // crash at any point leaves no in-between state — either both happened or
-// neither did. See CLAUDE.md's atomic apply-and-checkpoint section for why
-// two separate steps (apply, then record progress) can't be made safe by
+// neither did. Two separate steps (apply, then record progress) can't be made safe by
 // shrinking the gap between them; this closes the gap instead of shrinking
 // it.
 type Checkpointer struct {

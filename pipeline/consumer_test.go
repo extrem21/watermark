@@ -29,8 +29,7 @@ func newInvestigationConfig(caseName string) *shared.Config {
 
 // registerSlotCleanup guarantees cfg's slot and publication are dropped when
 // the test ends, even on failure. An un-dropped slot retains WAL on the
-// source indefinitely — the exact hazard CLAUDE.md's Stage 4 section is
-// about — so this investigation must never leave one behind.
+// source indefinitely, so this investigation must never leave one behind.
 func registerSlotCleanup(t *testing.T, cfg *shared.Config) {
 	t.Helper()
 	t.Cleanup(func() {

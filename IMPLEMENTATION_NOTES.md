@@ -1,9 +1,8 @@
 # Implementation Notes
 
 Things that came out of actually building and debugging each stage — decisions, tradeoffs, and
-behavior discovered empirically — that aren't obvious just from reading the final code. Read
-`CLAUDE.md` first for the why-this-architecture story; this file is the "here's what happened while
-building it" log. Add to it stage by stage; don't let it go stale.
+behavior discovered empirically — that aren't obvious just from reading the final code. The README
+covers the why-this-architecture story; this file is the "here's what happened while building it" log.
 
 ---
 
@@ -14,8 +13,8 @@ building it" log. Add to it stage by stage; don't let it go stale.
 - **Kill timing is log-line-triggered, not a random delay.** The crash harness (`cmd/crashharness`,
   `harness/crash_harness.go`) counts `"applied op="` lines from the pipeline's own stderr and kills
   once a seed-derived count (`KillAfterN`) is reached. A wall-clock random delay would be simpler,
-  but the timing wouldn't be tied to the seed — `CLAUDE.md`'s "a failing seed can be replayed
-  deterministically" requirement needs the trigger itself to be deterministic, not just the
+  but the timing wouldn't be tied to the seed — replaying a failing seed
+  deterministically needs the trigger itself to be deterministic, not just the
   workload.
 - **Two crash windows, one mechanism.** `CrashMidTransaction` kills as fast as possible right after
   the Nth applied line (racing to catch the (N+1)th change's transaction still open).

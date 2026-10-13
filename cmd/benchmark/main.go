@@ -116,8 +116,7 @@ func runOnce(ctx context.Context, cfg *shared.Config) (time.Duration, error) {
 // resetTables truncates accounts on both source and downstream directly —
 // not by relying on TRUNCATE replicating through the pipeline, since
 // consumer.go's decode loop has no case for pglogrepl.TruncateMessage and
-// silently drops it (schema/DDL-adjacent handling is out of scope, per
-// CLAUDE.md). Both sides are emptied explicitly so each run starts from the
+// silently drops it (schema/DDL-adjacent handling is out of scope). Both sides are emptied explicitly so each run starts from the
 // same known state WorkloadGen requires.
 func resetTables(ctx context.Context, cfg *shared.Config) error {
 	for _, dsn := range []string{cfg.SourceDSN, cfg.DownstreamDSN} {
